@@ -12,7 +12,6 @@ mrtmp.*
 /main/mrworker
 .DS_Store
 
-pkg/
 api.key
 .api.key.trimmed
 *-handin.tar.gz
