@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net"
+	"net/http"
 	"net/rpc"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"market-intel/internal/api"
 	"market-intel/internal/raft"
 	"market-intel/internal/scheduler"
 	"market-intel/internal/store"
@@ -18,13 +20,15 @@ import (
 
 // env vars:
 //
-//	BIND_ADDR  — TCP address to listen on, e.g. ":8001"
+//	BIND_ADDR  — TCP address to listen on for Raft RPC, e.g. ":8001"
 //	PEERS      — comma-separated list of ALL peer addresses in order, e.g. "host1:8001,host2:8002,host3:8003"
 //	ME         — 0-indexed position of this node in PEERS, e.g. "0"
+//	API_ADDR   — optional HTTP address for the REST API, e.g. ":8080" (omit to disable)
 func main() {
 	bindAddr := mustEnv("BIND_ADDR")
 	peersEnv := mustEnv("PEERS")
 	meStr := mustEnv("ME")
+	apiAddr := os.Getenv("API_ADDR") // optional
 
 	me, err := strconv.Atoi(meStr)
 	if err != nil {
@@ -66,8 +70,7 @@ func main() {
 	go srv.Accept(ln)
 
 	st := store.Make(rf, persister, applyCh)
-
-	sc := scheduler.Make(rf, st, scheduler.NoopExecutor{})
+	sc := scheduler.Make(rf, st, scheduler.NewDispatcher())
 
 	// wait for the cluster to elect a leader, then catch up any missed jobs
 	go func() {
@@ -81,6 +84,17 @@ func main() {
 			time.Sleep(200 * time.Millisecond)
 		}
 	}()
+
+	// start the REST API if API_ADDR is set
+	if apiAddr != "" {
+		apiServer := api.New(st, sc, rf, apiAddr)
+		go func() {
+			log.Printf("API server on %s", apiAddr)
+			if err := apiServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Printf("API server error: %v", err)
+			}
+		}()
+	}
 
 	// block until SIGINT / SIGTERM
 	sigCh := make(chan os.Signal, 1)

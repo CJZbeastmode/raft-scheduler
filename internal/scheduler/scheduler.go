@@ -3,6 +3,7 @@ package scheduler
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"time"
 
 	"market-intel/internal/store"
@@ -131,6 +132,17 @@ func (sc *Scheduler) fireJob(j store.Job, now time.Time) {
 		ReqID: newReqID(),
 		Run:   run,
 	})
+}
+
+// FireNow immediately runs the named job regardless of its scheduled NextRun.
+// Non-blocking — the job runs in a goroutine. Returns an error if the job does not exist.
+func (sc *Scheduler) FireNow(jobID string) error {
+	j, ok := sc.st.GetJob(jobID)
+	if !ok {
+		return fmt.Errorf("job %q not found", jobID)
+	}
+	go sc.fireJob(j, time.Now())
+	return nil
 }
 
 // newReqID generates a random 16-hex-char request ID for Raft dedup.
