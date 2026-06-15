@@ -11,6 +11,7 @@ mrtmp.*
 /main/mrsequential
 /main/mrworker
 .DS_Store
+*.pdf
 
 api.key
 .api.key.trimmed
